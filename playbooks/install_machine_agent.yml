@@ -5,13 +5,24 @@
 
   vars:
     appd_url: "https://download.appdynamics.com/download/prox/download-file/machine-bundle/25.7.0.4825/machineagent-bundle-64bit-linux-25.7.0.4825.zip"
-    auth_token: "Bearer eyJraWQiOiJJYlRCTy1zUmU1S3p3OUZhcFVDQ0hTSnFWM1VBelBZT05yNHV4RXg5RHZ3Ii..."   # <-- Replace with Jenkins secret
+    auth_token: "Bearer eyJraWQiOiJJYlRCTy1zUmU1S3p3OUZhcFVDQ0hTSnFWM1VBelBZT05yNHV4RXg5RHZ3Ii..."   # <-- Use Jenkins secret here
 
   tasks:
     - name: Ensure unzip is installed
-      ansible.builtin.package:
+      ansible.builtin.apt:
         name: unzip
         state: present
+        update_cache: yes
+
+    - name: Ensure wget is installed
+      ansible.builtin.apt:
+        name: wget
+        state: present
+
+    - name: Remove old machine agent zip (if exists)
+      ansible.builtin.file:
+        path: /tmp/machineagent.zip
+        state: absent
 
     - name: Download AppDynamics Machine Agent
       ansible.builtin.get_url:
@@ -19,6 +30,23 @@
         dest: /tmp/machineagent.zip
         headers:
           Authorization: "{{ auth_token }}"
+        mode: '0644'
+        validate_certs: yes
+
+    - name: Check if zip exists
+      ansible.builtin.stat:
+        path: /tmp/machineagent.zip
+      register: zip_file
+
+    - name: Fail if Machine Agent zip is missing
+      ansible.builtin.fail:
+        msg: "Machine Agent zip not found or failed to download!"
+      when: not zip_file.stat.exists
+
+    - name: Remove old agent folder (if exists)
+      ansible.builtin.file:
+        path: /opt/appdynamics
+        state: absent
 
     - name: Create directory for AppDynamics agent
       ansible.builtin.file:
@@ -32,7 +60,7 @@
         dest: /opt/appdynamics
         remote_src: yes
 
-    - name: Start Machine Agent
+    - name: Start Machine Agent in background
       ansible.builtin.shell: |
         nohup /opt/appdynamics/machineagent/machineagent &
 
@@ -51,6 +79,7 @@
 
           [Install]
           WantedBy=multi-user.target
+
     - name: Reload systemd
       ansible.builtin.shell: systemctl daemon-reload
 
