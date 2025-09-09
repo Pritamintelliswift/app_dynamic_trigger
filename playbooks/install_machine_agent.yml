@@ -8,12 +8,14 @@
     agent_dir: "/opt/appdynamics"
 
   tasks:
-    - name: Ensure apt-transport-https and dependencies are installed
+    - name: Ensure dependencies are installed (apt-transport-https, unzip, gcloud)
       ansible.builtin.apt:
         name:
           - apt-transport-https
           - ca-certificates
           - gnupg
+          - unzip
+          - google-cloud-sdk
         state: present
         update_cache: yes
 
@@ -31,13 +33,6 @@
     - name: Update apt cache
       ansible.builtin.apt:
         update_cache: yes
-
-    - name: Install required packages (unzip + gcloud)
-      ansible.builtin.apt:
-        name:
-          - unzip
-          - google-cloud-sdk
-        state: present
 
     - name: Copy GCP service account key to EC2
       ansible.builtin.copy:
@@ -63,11 +58,17 @@
         state: directory
         mode: '0755'
 
-    - name: Extract AppDynamics Machine Agent
+    - name: Extract AppDynamics Machine Agent (using unarchive)
       ansible.builtin.unarchive:
         src: "{{ machine_agent_zip }}"
         dest: "{{ agent_dir }}"
         remote_src: yes
+      ignore_errors: yes
+
+    - name: Extract AppDynamics Machine Agent (fallback unzip)
+      ansible.builtin.command:
+        cmd: "unzip -o {{ machine_agent_zip }} -d {{ agent_dir }}"
+      when: not (ansible_failed_result is not defined)
 
     - name: Create systemd service for Machine Agent
       ansible.builtin.copy:
@@ -86,7 +87,8 @@
           WantedBy=multi-user.target
 
     - name: Reload systemd
-      ansible.builtin.shell: systemctl daemon-reload
+      ansible.builtin.systemd:
+        daemon_reload: yes
 
     - name: Enable and start machine agent service
       ansible.builtin.systemd:
