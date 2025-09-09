@@ -68,7 +68,8 @@
     - name: Extract AppDynamics Machine Agent (fallback unzip)
       ansible.builtin.command:
         cmd: "unzip -o {{ machine_agent_zip }} -d {{ agent_dir }}"
-      when: not (ansible_failed_result is not defined)
+      register: unzip_result
+      failed_when: unzip_result.rc != 0
 
     - name: Create systemd service for Machine Agent
       ansible.builtin.copy:
@@ -87,8 +88,7 @@
           WantedBy=multi-user.target
 
     - name: Reload systemd
-      ansible.builtin.systemd:
-        daemon_reload: yes
+      ansible.builtin.shell: systemctl daemon-reload
 
     - name: Enable and start machine agent service
       ansible.builtin.systemd:
