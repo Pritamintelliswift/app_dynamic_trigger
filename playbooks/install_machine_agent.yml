@@ -4,8 +4,8 @@
   become: yes
 
   vars:
-    appd_url: "https://download.appdynamics.com/download/prox/download-file/machine-bundle/25.7.0.4825/machineagent-bundle-64bit-linux-25.7.0.4825.zip"
-    auth_token: "Bearer eyJraWQiOiJJYlRCTy1zUmU1S3p3OUZhcFVDQ0hTSnFWM1VBelBZT05yNHV4RXg5RHZ3Ii..."   # <-- Use Jenkins secret here
+    machine_agent_zip: "/tmp/machineagent.zip"
+    agent_dir: "/opt/appdynamics"
 
   tasks:
     - name: Ensure unzip is installed
@@ -14,54 +14,36 @@
         state: present
         update_cache: yes
 
-    - name: Ensure wget is installed
-      ansible.builtin.apt:
-        name: wget
-        state: present
-
-    - name: Remove old machine agent zip (if exists)
-      ansible.builtin.file:
-        path: /tmp/machineagent.zip
-        state: absent
-
-    - name: Download AppDynamics Machine Agent with curl
-      ansible.builtin.shell: |
-        curl -L -o /tmp/machineagent.zip \
-          -H "Authorization: {{ auth_token }}" \
-          "{{ appd_url }}"
-      args:
-        creates: /tmp/machineagent.zip
-
     - name: Check if zip exists
       ansible.builtin.stat:
-        path: /tmp/machineagent.zip
+        path: "{{ machine_agent_zip }}"
       register: zip_file
 
     - name: Fail if Machine Agent zip is missing
       ansible.builtin.fail:
-        msg: "Machine Agent zip not found or failed to download!"
+        msg: "Machine Agent zip not found! Make sure it was downloaded by Jenkins."
       when: not zip_file.stat.exists
 
     - name: Remove old agent folder (if exists)
       ansible.builtin.file:
-        path: /opt/appdynamics
+        path: "{{ agent_dir }}"
         state: absent
 
     - name: Create directory for AppDynamics agent
       ansible.builtin.file:
-        path: /opt/appdynamics
+        path: "{{ agent_dir }}"
         state: directory
         mode: '0755'
 
     - name: Extract AppDynamics Machine Agent
       ansible.builtin.unarchive:
-        src: /tmp/machineagent.zip
-        dest: /opt/appdynamics
+        src: "{{ machine_agent_zip }}"
+        dest: "{{ agent_dir }}"
         remote_src: yes
 
     - name: Start Machine Agent in background
       ansible.builtin.shell: |
-        nohup /opt/appdynamics/machineagent/machineagent &
+        nohup {{ agent_dir }}/machineagent/machineagent &
 
     - name: Enable service persistence
       ansible.builtin.copy:
@@ -72,7 +54,7 @@
           After=network.target
 
           [Service]
-          ExecStart=/opt/appdynamics/machineagent/machineagent
+          ExecStart={{ agent_dir }}/machineagent/machineagent
           Restart=always
           User=root
 
