@@ -4,18 +4,19 @@
   become: yes
 
   vars:
-    machine_agent_zip: "/tmp/machineagent.zip"
+    bucket_name: "appdynamics-agent"
+    agent_file: "machineagent-bundle-64bit-linux-25.7.0.4825.zip"
+    machine_agent_zip: "/tmp/machineagent-bundle-64bit-linux-25.7.0.4825.zip"
     agent_dir: "/opt/appdynamics"
 
   tasks:
-    - name: Ensure dependencies are installed (apt-transport-https, unzip, gcloud)
+    - name: Ensure apt-transport-https and dependencies are installed
       ansible.builtin.apt:
         name:
           - apt-transport-https
           - ca-certificates
           - gnupg
           - unzip
-          - google-cloud-sdk
         state: present
         update_cache: yes
 
@@ -34,6 +35,11 @@
       ansible.builtin.apt:
         update_cache: yes
 
+    - name: Install Google Cloud SDK
+      ansible.builtin.apt:
+        name: google-cloud-sdk
+        state: present
+
     - name: Copy GCP service account key to EC2
       ansible.builtin.copy:
         src: "{{ gcp_key_file }}"
@@ -43,9 +49,19 @@
     - name: Download Machine Agent from GCS
       ansible.builtin.shell: |
         export GOOGLE_APPLICATION_CREDENTIALS=/tmp/gcp.json
-        gsutil cp gs://appdynamics-agent/machineagent-bundle-64bit-linux-25.7.0.4825.zip {{ machine_agent_zip }}
+        gsutil -m cp gs://{{ bucket_name }}/{{ agent_file }} {{ machine_agent_zip }}
       args:
-        creates: "{{ machine_agent_zip }}"
+        warn: false
+
+    - name: Verify machine agent file
+      ansible.builtin.shell: |
+        ls -lh {{ machine_agent_zip }}
+        file {{ machine_agent_zip }}
+      register: agent_file_debug
+      changed_when: false
+
+    - debug:
+        var: agent_file_debug.stdout_lines
 
     - name: Remove old agent folder (if exists)
       ansible.builtin.file:
@@ -58,18 +74,11 @@
         state: directory
         mode: '0755'
 
-    - name: Extract AppDynamics Machine Agent (using unarchive)
+    - name: Extract AppDynamics Machine Agent
       ansible.builtin.unarchive:
         src: "{{ machine_agent_zip }}"
         dest: "{{ agent_dir }}"
         remote_src: yes
-      ignore_errors: yes
-
-    - name: Extract AppDynamics Machine Agent (fallback unzip)
-      ansible.builtin.command:
-        cmd: "unzip -o {{ machine_agent_zip }} -d {{ agent_dir }}"
-      register: unzip_result
-      failed_when: unzip_result.rc != 0
 
     - name: Create systemd service for Machine Agent
       ansible.builtin.copy:
