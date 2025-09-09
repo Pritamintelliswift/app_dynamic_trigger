@@ -8,14 +8,36 @@
     agent_dir: "/opt/appdynamics"
 
   tasks:
-    - name: Ensure required packages are installed
+    - name: Ensure apt-transport-https and dependencies are installed
       ansible.builtin.apt:
-        name: "{{ item }}"
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
         state: present
         update_cache: yes
-      loop:
-        - unzip
-        - google-cloud-sdk
+
+    - name: Add Google Cloud SDK repo key
+      ansible.builtin.shell: |
+        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+      args:
+        warn: false
+
+    - name: Add Google Cloud SDK repo
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/google-cloud-sdk.list
+        content: "deb https://packages.cloud.google.com/apt cloud-sdk main\n"
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install required packages (unzip + gcloud)
+      ansible.builtin.apt:
+        name:
+          - unzip
+          - google-cloud-sdk
+        state: present
 
     - name: Copy GCP service account key to EC2
       ansible.builtin.copy:
