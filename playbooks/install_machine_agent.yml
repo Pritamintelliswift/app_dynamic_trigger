@@ -24,14 +24,13 @@
         path: /tmp/machineagent.zip
         state: absent
 
-    - name: Download AppDynamics Machine Agent
-      ansible.builtin.get_url:
-        url: "{{ appd_url }}"
-        dest: /tmp/machineagent.zip
-        headers:
-          Authorization: "{{ auth_token }}"
-        mode: '0644'
-        validate_certs: yes
+    - name: Download AppDynamics Machine Agent with curl
+      ansible.builtin.shell: |
+        curl -L -o /tmp/machineagent.zip \
+          -H "Authorization: {{ auth_token }}" \
+          "{{ appd_url }}"
+      args:
+        creates: /tmp/machineagent.zip
 
     - name: Check if zip exists
       ansible.builtin.stat:
